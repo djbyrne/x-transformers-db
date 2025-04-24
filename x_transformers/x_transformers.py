@@ -20,9 +20,8 @@ from dataclasses import dataclass
 
 from loguru import logger
 
-# Use relative import for attend
-from .attend import Attend, Intermediates
-from .autoregressive_wrapper import AutoregressiveWrapper
+from x_transformers.attend import Attend, Intermediates
+from x_transformers.autoregressive_wrapper import AutoregressiveWrapper
 
 import einx
 from einops.layers.torch import Rearrange

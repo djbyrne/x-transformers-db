@@ -20,8 +20,9 @@ from dataclasses import dataclass
 
 from loguru import logger
 
-from x_transformers.attend import Attend, Intermediates
-from x_transformers.autoregressive_wrapper import AutoregressiveWrapper
+# Use relative import for attend
+from .attend import Attend, Intermediates
+from .autoregressive_wrapper import AutoregressiveWrapper
 
 import einx
 from einops.layers.torch import Rearrange
@@ -2437,20 +2438,10 @@ class AttentionLayers(Module):
 
         # assume cached key / values
 
-        attn_cache = []
+        attn_cache_list = cache.attn_intermediates if exists(cache) and exists(cache.attn_intermediates) else []
+        num_attn_cache = len(attn_cache_list)
 
-        if exists(cache):
-            assert self.causal and not any([*map(exists, (mask, attn_mask))])
-
-            if exists(context):
-                context = context[:, :0]
-
-            if cache_age > 0:
-                x = x[:, -cache_age:] # for spec decoding, may be greater than 1
-
-            attn_cache = cache.attn_intermediates
-
-        iter_attn_cache = iter(attn_cache)
+        iter_attn_cache = iter(attn_cache_list) # Keep this for now if other parts rely on it, although direct indexing is preferred
 
         # setup multistreams if needed
 
@@ -2568,9 +2559,11 @@ class AttentionLayers(Module):
             # forward depending on layer type
 
             if layer_type == 'a':
-                out, inter = block(x, mask = mask, context_mask = self_attn_kv_mask, attn_mask = attn_mask, rel_pos = self.rel_pos, pos = pos, rotary_pos_emb = rotary_pos_emb, prev_attn = prev_attn, cache = next(iter_attn_cache, None), mem = layer_mem, mem_mask = layer_mem_mask, attn_bias = attn_bias, value_residual = maybe_self_attn_value_residual, return_intermediates = True)
+                layer_attn_cache = attn_cache_list[ind] if ind < num_attn_cache else None
+                out, inter = block(x, mask = mask, context_mask = self_attn_kv_mask, attn_mask = attn_mask, rel_pos = self.rel_pos, pos = pos, rotary_pos_emb = rotary_pos_emb, prev_attn = prev_attn, cache = layer_attn_cache, mem = layer_mem, mem_mask = layer_mem_mask, attn_bias = attn_bias, value_residual = maybe_self_attn_value_residual, return_intermediates = True)
             elif layer_type == 'c':
-                out, inter = block(x, context = context, mask = mask, context_mask = context_mask, prev_attn = prev_cross_attn, cache = next(iter_attn_cache, None), value_residual = maybe_cross_attn_value_residual, **cross_attn_rotary_pos_emb, return_intermediates = True)
+                layer_attn_cache = attn_cache_list[ind] if ind < num_attn_cache else None
+                out, inter = block(x, context = context, mask = mask, context_mask = context_mask, prev_attn = prev_cross_attn, cache = layer_attn_cache, value_residual = maybe_cross_attn_value_residual, **cross_attn_rotary_pos_emb, return_intermediates = True)
             elif layer_type == 'f':
                 out = block(x)
 
